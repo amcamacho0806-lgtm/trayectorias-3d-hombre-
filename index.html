@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trayectorias de disparo en 3D – taller de medicina legal</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font-family:Georgia,"Times New Roman",serif;background:#0e1b21;color:#e6eef0}
+#app{display:flex;height:100%}
+#vista{flex:1;position:relative;min-width:0;overflow:hidden}
+#ayuda{position:absolute;left:12px;bottom:10px;font:13px system-ui,sans-serif;color:#9db4ba;pointer-events:none}
+#panel{width:350px;overflow-y:auto;padding:14px;background:#15262e;border-left:1px solid #28404a;font:14px/1.45 system-ui,sans-serif}
+h1{font:600 19px/1.25 Georgia,serif;margin:0 0 6px}
+.nota{color:#9db4ba;font-size:13px;margin:0 0 10px}
+.vis{display:flex;gap:14px;flex-wrap:wrap;margin:8px 0 12px}
+.vis label{display:flex;gap:5px;align-items:center}
+.tarjeta{border:1px solid #28404a;border-left:5px solid #888;border-radius:6px;padding:10px;margin-bottom:10px;background:#101e25}
+.fila{display:flex;gap:6px;margin-bottom:8px}
+.fila .nom{flex:1}
+input{background:#0b161b;color:#e6eef0;border:1px solid #33505b;border-radius:4px;padding:5px 6px;font:inherit;min-width:0}
+input[type=color]{padding:0;width:36px;height:32px}
+select{background:#0b161b;color:#e6eef0;border:1px solid #33505b;border-radius:4px;padding:5px 6px;font:inherit;min-width:0}
+.tarjeta.activa{box-shadow:0 0 0 2px #6cc4d6}
+.orif{margin-top:8px}.orif strong{font-size:13px}
+input:focus-visible,button:focus-visible{outline:2px solid #6cc4d6;outline-offset:1px}
+.campos{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.campos label{display:flex;flex-direction:column;font-size:12px;color:#9db4ba;gap:2px}
+.res{margin-top:8px;font-size:13px;color:#cfe0e4}
+button{background:#1f3a45;color:#e6eef0;border:1px solid #33505b;border-radius:4px;padding:6px 10px;font:inherit;cursor:pointer}
+button:hover{background:#27495a}
+.botones{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 12px}
+details{font-size:13px;color:#9db4ba;margin-bottom:12px}
+@media(max-width:800px){#app{flex-direction:column}#panel{width:100%;height:50%;border-left:0;border-top:1px solid #28404a}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="vista"><div id="ayuda">Arrastra para girar · rueda o pellizco para acercar · el rostro marca el frente</div></div>
+  <aside id="panel">
+    <h1>Trayectorias de disparo entre orificios</h1>
+    <p class="nota">Cada caso une el orificio de entrada con el de salida y calcula la longitud y la dirección del trayecto. El maniquí se ajusta a la altura, el peso y la complexión de cada caso. Medidas en centímetros; es un esquema didáctico y no reemplaza una valoración pericial.</p>
+    <div class="vis">
+      <label><input type="checkbox" id="vEjes" checked> Ejes</label>
+      <label><input type="checkbox" id="vAng" checked> Ángulos</label>
+      <label id="lCabello" hidden><input type="checkbox" id="vCabello" checked> Cabello y ojos</label>
+    </div>
+    <div class="botones">
+      <button id="agregar">Agregar caso</button>
+      <button id="completo">Ver cuerpo completo</button>
+      <button id="copiar">Copiar datos</button>
+    </div>
+        <details>
+      <summary>Cuerpo 3D realista (opcional)</summary>
+      <p id="estadoCuerpo">Buscando male_base_mesh.glb…</p>
+      <div id="ajusteCuerpo" hidden>
+        <div class="campos">
+          <label>Opacidad<input type="range" min="0.15" max="1" step="0.05" value="1" id="opCuerpo" disabled></label><span></span>
+          <label>Girar X (°)<input type="number" step="90" data-b="rx"></label>
+          <label>Girar Y (°)<input type="number" step="90" data-b="ry"></label>
+          <label>Girar Z (°)<input type="number" step="90" data-b="rz"></label>
+          <label>Mover X (cm)<input type="number" step="0.5" data-b="px"></label>
+          <label>Mover Y (cm)<input type="number" step="0.5" data-b="py"></label>
+          <label>Mover Z (cm)<input type="number" step="0.5" data-b="pz"></label>
+        </div>
+        <div class="botones"><button id="copiarAjusteCuerpo">Copiar ajuste</button></div>
+      </div>
+      <p>Sube un archivo .glb, .obj o .stl de un cuerpo completo al mismo repositorio, con el nombre indicado en la línea CUERPO_MODELO de index.html. Con un cuerpo cargado, la posición de cada orificio se calcula sobre su superficie real. Elige un modelo liviano (menos de unos 30.000 triángulos) para que la página no se ponga lenta. Debe mirar hacia el frente (+Z) y estar de pie.</p>
+    </details>
+    <div id="lista"></div>
+    <details>
+      <summary>Cómo leer las medidas</summary>
+      <p>Vértex: punto más alto de la cabeza; la distancia se mide hacia abajo. Borde rotuliano: borde superior de la rótula; la distancia se mide hacia arriba. Línea media: eje del cuerpo; el lado es la derecha o izquierda del sujeto. En cabeza, cuello y tronco la distancia a la línea media se mide sobre la piel, siguiendo la curvatura; en los muslos, en línea recta. Si un orificio queda en un lugar que no esperabas, revisa el lado y la cara (anterior o posterior).</p>
+      <p>Las líneas celestes del maniquí marcan la línea media anterior, el vértex y el borde rotuliano. La posición sobre la superficie es aproximada.</p>
+      <p>Para guardar tus cambios de forma permanente, pulsa "Copiar datos" y pega el resultado en index.html, reemplazando el bloque CASOS.</p>
+    </details>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+<script>
+/* ===== TUS CASOS (edita aquí o desde el panel) =====
+   Cada caso tiene su cuerpo (aquí los tres son el mismo) y un orificio de entrada y uno de salida.
+   cuerpo: altura (cm), peso (kg), complexion (delgada | media | robusta), sexo (F | M | "" si no se indica)
+   forma: redonda | estrella | ovalada      diam: diámetro en cm
+   ref: vertex (se mide hacia abajo desde el punto más alto de la cabeza) | rotula (se mide hacia arriba desde el borde rotuliano)
+   dist: distancia en cm desde esa referencia      lat: distancia en cm a la línea media
+   lado: I (izquierda del sujeto) | D (derecha)     cara: anterior | posterior */
+const CASOS=[
+  {nombre:"Caso 1 · cabeza", color:"#ff5a5f",
+   cuerpo:{sexo:"M", altura:170, peso:70, complexion:"atletica"},
+   entrada:{forma:"redonda",  diam:0.5, ref:"vertex", dist:4,  lat:8,  lado:"D", cara:"posterior"},
+   salida: {forma:"redonda",  diam:2,   ref:"vertex", dist:20, lat:10, lado:"I", cara:"anterior"}},
+  {nombre:"Caso 2 · tórax", color:"#ffd23f",
+   cuerpo:{sexo:"M", altura:170, peso:70, complexion:"robusta"},
+   entrada:{forma:"redonda",  diam:1,   ref:"vertex", dist:50, lat:16, lado:"D", cara:"anterior"},
+   salida: {forma:"estrella", diam:6,   ref:"vertex", dist:46, lat:8,  lado:"D", cara:"posterior"}},
+  {nombre:"Caso 3 · muslo derecho", color:"#4cc9f0",
+   cuerpo:{sexo:"M", altura:170, peso:70, complexion:"robusta"},
+   entrada:{forma:"redonda",  diam:1,   ref:"rotula", dist:20, lat:8,  lado:"D", cara:"anterior"},
+   salida: {forma:"redonda",  diam:1,   ref:"rotula", dist:15, lat:17, lado:"D", cara:"posterior"}}
+];
+/* ========================================================== */
+
+/* ===== CUERPO 3D REALISTA (opcional) =====
+   Sube un archivo .glb, .obj o .stl de un cuerpo humano completo al repositorio y escribe su nombre aquí.
+   Se escala solo a la altura de cada caso. rot: giro en grados [X,Y,Z] · pos: desplazamiento en cm */
+const CUERPO_MODELO={archivo:'male_base_mesh.glb', rot:[0,0,0], pos:[0,0,0]};
+
+/* ===== ESTILO DE LAS TRAYECTORIAS (cm) =====
+   extension: cuánto sobresale la línea a cada lado de los orificios · grosor: radio de la línea
+   ejes: largo de los ejes de referencia · arco: radio de los arcos de ángulo */
+const ESTILO={extension:30, grosor:0.25, ejes:28, arco:14};
+
+const PALETA=["#ff5a5f","#ffd23f","#4cc9f0","#7bd88f","#c77dff","#ff9f43"];
+
+const cont=document.getElementById('vista');
+const escena=new THREE.Scene(); escena.background=new THREE.Color(0x0e1b21);
+const cam=new THREE.PerspectiveCamera(45,1,0.1,1000);
+const rend=new THREE.WebGLRenderer({antialias:true});
+rend.setPixelRatio(Math.min(devicePixelRatio,2));
+cont.appendChild(rend.domElement);
+escena.add(new THREE.AmbientLight(0xffffff,0.75));
+const sol=new THREE.DirectionalLight(0xffffff,0.8); sol.position.set(10,20,15); escena.add(sol);
+
+escena.add(new THREE.HemisphereLight(0xdfe8f0,0x2a3b44,0.5));
+const esfera=new THREE.SphereGeometry(1,28,18);
+const V=(x,y,z)=>new THREE.Vector3(x,y,z);
+
+const rejilla=new THREE.GridHelper(160,32,0x3a5560,0x24383f); rejilla.position.y=-170; escena.add(rejilla);
+
+/* cámara orbital sencilla */
+let th=0.5, ph=1.45, R=250; const objetivo=new THREE.Vector3(0,-85,0);
+function camara(){
+  cam.position.set(objetivo.x+R*Math.sin(ph)*Math.sin(th),objetivo.y+R*Math.cos(ph),objetivo.z+R*Math.sin(ph)*Math.cos(th));
+  cam.lookAt(objetivo);
+}
+const lienzo=rend.domElement; lienzo.style.touchAction='none';
+const punteros=new Map(); let dist0=0;
+lienzo.addEventListener('pointerdown',e=>{punteros.set(e.pointerId,{x:e.clientX,y:e.clientY});lienzo.setPointerCapture(e.pointerId);dist0=0;});
+lienzo.addEventListener('pointermove',e=>{
+  const p=punteros.get(e.pointerId); if(!p)return;
+  if(punteros.size===1){
+    th-=(e.clientX-p.x)*0.008; ph=Math.min(3.0,Math.max(0.15,ph-(e.clientY-p.y)*0.008));
+    p.x=e.clientX;p.y=e.clientY;
+  }else{
+    p.x=e.clientX;p.y=e.clientY;
+    const [a,b]=[...punteros.values()]; const d=Math.hypot(a.x-b.x,a.y-b.y);
+    if(dist0)R=Math.min(400,Math.max(8,R*dist0/d)); dist0=d;
+  }
+  camara();
+});
+const soltar=e=>{punteros.delete(e.pointerId);dist0=0;};
+lienzo.addEventListener('pointerup',soltar); lienzo.addEventListener('pointercancel',soltar);
+lienzo.addEventListener('wheel',e=>{e.preventDefault();R=Math.min(400,Math.max(8,R*(1+e.deltaY*0.001)));camara();},{passive:false});
+
+function ajustar(){
+  const w=cont.clientWidth,h=cont.clientHeight;
+  rend.setSize(w,h); cam.aspect=w/h; cam.updateProjectionMatrix();
+}
+addEventListener('resize',ajustar); ajustar(); camara();
+(function anim(){requestAnimationFrame(anim);rend.render(escena,cam);})();
+
+/* ===== maniquí esquemático ajustado a cada caso. Origen: vértex. X + = izquierda del sujeto, Y + = arriba, Z + = frente ===== */
+const cuerpo=new THREE.Group(); escena.add(cuerpo);
+const maniqui=new THREE.Group(), guias=new THREE.Group(), bodyRaiz=new THREE.Group(), bodyRot=new THREE.Group();
+cuerpo.add(maniqui); cuerpo.add(guias); cuerpo.add(bodyRaiz); bodyRaiz.add(bodyRot);
+let cuerpoReal=false, matCuerpoReal=null, verCuerpo=0, ultimaSig='';
+let activo=0;
+const matCuerpo=new THREE.MeshPhongMaterial({color:0xb9a89a,transparent:true,opacity:0.3,depthWrite:false,shininess:6});
+const f=n=>n.toFixed(1);
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+
+function params(c){ // medidas del cuerpo a partir de altura, peso, complexión y sexo (base: adulto de 170 cm, 70 kg)
+  const k=(c&&c.cuerpo)||{}, h=+k.altura||170, sv=h/170, imc=(+k.peso||70)/((h/100)**2);
+  const g=Math.min(1.4,Math.max(0.7,Math.sqrt(imc/22)))*({delgada:0.94,media:1,robusta:1.1}[k.complexion]||1);
+  const sx=k.sexo==='F'?0.88:1, sp=k.sexo==='F'?1.05:1;
+  const b={h,sv,g,menton:-22*sv,hombro:-31*sv,cadera:-92*sv,rotula:-122*sv,suelo:-170*sv,
+    A:18*g*sx,B:11*g,rCuello:5.4*g,xm:10.5*g*sp,cabY:-10.5*sv,cabH:10.5*sv,cabA:8.6*sv,cabB:10.5*sv};
+  b.rm=y=>g*(8.5-2*Math.min(1,Math.max(0,(-y+b.cadera)/(38*sv))));
+  return b;
+}
+function construirCuerpo(){
+  const b=params(CASOS[activo]||CASOS[0]), sv=b.sv, g=b.g;
+  while(maniqui.children.length)maniqui.remove(maniqui.children[0]);
+  while(guias.children.length)guias.remove(guias.children[0]);
+  const add=(geo,x,y,z,sx,sy,sz)=>{const m=new THREE.Mesh(geo,matCuerpo);m.position.set(x,y,z);m.scale.set(sx||1,sy||1,sz||1);m.renderOrder=3;maniqui.add(m);};
+  const cil=(rt,rb,h,n)=>new THREE.CylinderGeometry(rt,rb,h,n||28);
+  add(cil(b.rCuello,b.rCuello,10*sv,24),0,-26*sv,0);       // cuello
+  add(cil(1,1,62*sv,40),0,-61*sv,0,b.A,1,b.B);              // tronco
+  add(esfera,0,-31*sv,0,b.A,5*sv,b.B);                      // hombros
+  add(esfera,0,-92*sv,0,17.5*b.xm/10.5,8*sv,11*g);          // pelvis
+  [-1,1].forEach(l=>{
+    add(cil(4.3*g,3.6*g,52*sv,18),l*(b.A+4.5*g),-58*sv,0);  // brazos
+    add(cil(b.rm(b.cadera),b.rm(-130*sv),38*sv,26),l*b.xm,-111*sv,0); // muslos
+    add(cil(6.3*g,4.2*g,40*sv,22),l*b.xm,-150*sv,0);         // piernas
+    if(!cuerpoReal){
+      const an=new THREE.Mesh(new THREE.TorusGeometry(b.rm(b.rotula)+0.2,0.15,6,32),new THREE.MeshBasicMaterial({color:0x6cc4d6}));
+      an.rotation.x=Math.PI/2; an.position.set(l*b.xm,b.rotula,0); guias.add(an);   // borde rotuliano
+    }
+  });
+  guias.add(new THREE.Mesh(new THREE.SphereGeometry(0.6,12,8),new THREE.MeshBasicMaterial({color:0x6cc4d6}))); // vértex
+  if(!cuerpoReal)guias.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([V(0,-30*sv,b.B+0.4),V(0,-92*sv,b.B+0.4)]),new THREE.LineBasicMaterial({color:0x6cc4d6}))); // línea media
+  maniqui.visible=!cuerpoReal;
+  rejilla.position.y=b.suelo;
+  if(cuerpoReal)ajustarCuerpoReal();
+}
+/* cuerpo realista: se escala a la altura del caso y se coloca con el vértex en y = 0 */
+let pielMesh=null, ptsPiel=null, matsPiel=[];
+function aplicarOpacidad(v){
+  const sol=true, o=1;         // sólido = 100 % opaco
+  matsPiel.forEach(m=>{m.transparent=o<1;m.opacity=o;m.depthWrite=o>=1;m.alphaTest=0;m.needsUpdate=true;});
+  matCuerpo.opacity=sol?1:0.3; matCuerpo.transparent=!sol; matCuerpo.depthWrite=sol; matCuerpo.needsUpdate=true;
+  document.getElementById('opCuerpo').disabled=sol;
+}
+function ajustarCuerpoReal(){
+  if(!ptsPiel)return;
+  const b=params(CASOS[activo]||CASOS[0]), M=CUERPO_MODELO, rd=Math.PI/180;
+  bodyRot.rotation.set(M.rot[0]*rd,M.rot[1]*rd,M.rot[2]*rd);
+  const e=new THREE.Matrix4().makeRotationFromEuler(bodyRot.rotation).elements, p=ptsPiel, n=p.length/3, r=new Float32Array(p.length);
+  let minY=Infinity,maxY=-Infinity;
+  for(let i=0;i<n;i++){
+    const x=p[3*i],y=p[3*i+1],z=p[3*i+2];
+    r[3*i]=e[0]*x+e[4]*y+e[8]*z; r[3*i+1]=e[1]*x+e[5]*y+e[9]*z; r[3*i+2]=e[2]*x+e[6]*y+e[10]*z;
+    if(r[3*i+1]<minY)minY=r[3*i+1]; if(r[3*i+1]>maxY)maxY=r[3*i+1];
+  }
+  const corte=maxY-0.13*(maxY-minY); let x0=Infinity,x1=-Infinity,z0=Infinity,z1=-Infinity;   // la cabeza (13 % superior) fija el centro
+  for(let i=0;i<n;i++){if(r[3*i+1]>corte){x0=Math.min(x0,r[3*i]);x1=Math.max(x1,r[3*i]);z0=Math.min(z0,r[3*i+2]);z1=Math.max(z1,r[3*i+2]);}}
+  const k=b.h/((maxY-minY)||1);
+  bodyRaiz.scale.setScalar(k);
+  bodyRaiz.position.set(-(x0+x1)/2*k+M.pos[0],-maxY*k+M.pos[1],-(z0+z1)/2*k+M.pos[2]);   // vértex en y = 0, cabeza centrada
+  bodyRaiz.updateMatrixWorld(true);
+  const sig=[k,M.rot.join(),M.pos.join()].join('|'); if(sig!==ultimaSig){ultimaSig=sig;verCuerpo++;}
+}
+
+/* punto a distancia s (medida sobre la piel) de la línea media, en una sección elíptica de semiejes A (lateral) y B (antero-posterior) */
+function enElipse(A,B,s){
+  const n=400, dt=Math.PI/2/n; let t=0,l=0;
+  while(t<Math.PI/2-1e-9&&l<s){const u=t+dt/2;l+=Math.hypot(A*Math.cos(u),B*Math.sin(u))*dt;t+=dt;}
+  return [A*Math.sin(t),B*Math.cos(t),l>=s-1e-6];
+}
+function posAnalitica(o,b){
+  const sg=o.lado==='I'?1:-1, s=+o.lat||0;
+  const y=o.ref==='rotula'?b.rotula+(+o.dist||0):-(+o.dist||0);
+  let x,z,aviso=false;
+  if(y<b.cadera){                                    // muslo y pierna: distancia recta a la línea media
+    const xc=sg*b.xm, R=b.rm(y); x=sg*s; const q=R*R-(x-xc)**2; aviso=q<0; z=Math.sqrt(Math.max(q,0.5));
+  }else{                                             // cabeza, cuello y tronco: distancia sobre la piel
+    let A=b.A,B=b.B;
+    if(y>b.menton){const q=Math.sqrt(Math.max(1-((y-b.cabY)/b.cabH)**2,0.05));A=b.cabA*q;B=b.cabB*q;}
+    else if(y>b.hombro){A=B=b.rCuello;}
+    const r=enElipse(A,B,s); x=sg*r[0]; z=r[1]; aviso=!r[2];
+  }
+  const P=V(x,y,(o.cara==='posterior'?-1:1)*z); P.aviso=aviso; return P;
+}
+const rcB=new THREE.Raycaster(), cachePos=new Map();
+function zEn(x,y,cara){ // profundidad de la superficie del cuerpo real en (x, y)
+  const s=cara==='posterior'?-1:1;
+  rcB.set(V(x,y,s*300),V(0,0,-s)); const h=pielMesh?rcB.intersectObject(pielMesh,false)[0]:null;
+  return h?h.point.z:null;
+}
+function posMalla(o,b){
+  const sg=o.lado==='I'?1:-1, s=+o.lat||0, y=o.ref==='rotula'?b.rotula+(+o.dist||0):-(+o.dist||0);
+  let x=0,z,aviso=false;
+  if(y<b.cadera){x=sg*s;z=zEn(x,y,o.cara);if(z===null)return null;}   // piernas: distancia recta
+  else{                                                              // resto: distancia sobre la piel
+    z=zEn(0,y,o.cara); if(z===null)return null; let l=0; const dx=0.25;
+    while(l<s-1e-6){
+      const x2=x+sg*dx, z2=zEn(x2,y,o.cara);
+      if(z2===null||Math.abs(z2-z)>2.5){aviso=true;break;}
+      l+=Math.hypot(dx,z2-z); x=x2; z=z2;
+    }
+  }
+  const P=V(x,y,z); P.aviso=aviso; return P;
+}
+function posOrificio(o,b){
+  if(!cuerpoReal)return posAnalitica(o,b);
+  const k=[verCuerpo,o.lado,o.lat,o.dist,o.ref,o.cara].join('|');
+  if(!cachePos.has(k)){if(cachePos.size>400)cachePos.clear();cachePos.set(k,posMalla(o,b)||posAnalitica(o,b));}
+  return cachePos.get(k);
+}
+const region=(y,b)=>y>b.menton?'cabeza':y>b.hombro?'cuello':y>b.cadera?'tronco':y>-130*b.sv?'muslo':'pierna';
+
+const grupo=new THREE.Group(); escena.add(grupo);
+function marcador(o,P,color){
+  const r=Math.max(+o.diam||1,0.2)/2, g=new THREE.Group(); let geo;
+  if(o.forma==='estrella'){
+    const sh=new THREE.Shape();
+    for(let i=0;i<16;i++){const a=i*Math.PI/8, rr=i%2?r*0.45:r; if(i)sh.lineTo(rr*Math.cos(a),rr*Math.sin(a)); else sh.moveTo(rr*Math.cos(a),rr*Math.sin(a));}
+    geo=new THREE.ShapeGeometry(sh);
+  }else geo=new THREE.CircleGeometry(r,32);
+  g.add(new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0x4a0a0a,side:THREE.DoubleSide})));
+  g.add(new THREE.Mesh(new THREE.RingGeometry(r+0.1,r+0.5,40),new THREE.MeshBasicMaterial({color,side:THREE.DoubleSide})));
+  if(o.forma==='ovalada')g.scale.x=1.5;
+  const s=o.cara==='posterior'?-1:1; if(s<0)g.rotation.y=Math.PI;
+  g.position.set(P.x,P.y,P.z+s*0.3); return g;
+}
+const solido=()=>true;
+const mc=(color,op)=>new THREE.MeshBasicMaterial({color,depthTest:solido(),transparent:true,opacity:op===undefined?0.95:op});
+function barraL(P,Q,r,color,op,punta){ // barra de P a Q, con punta cónica opcional en Q; se ve a través del cuerpo
+  const d=Q.clone().sub(P), L=d.length(); if(L<0.01)return; d.normalize();
+  const q=new THREE.Quaternion().setFromUnitVectors(V(0,1,0),d), m=mc(color,op);
+  const t=new THREE.Mesh(new THREE.CylinderGeometry(r,r,L,10),m); t.position.copy(P).addScaledVector(d,L/2); t.quaternion.copy(q); t.renderOrder=10; grupo.add(t);
+  if(punta){const c=new THREE.Mesh(new THREE.ConeGeometry(r*4,r*14,14),m); c.position.copy(Q).addScaledVector(d,r*7); c.quaternion.copy(q); c.renderOrder=10; grupo.add(c);}
+}
+function etiqueta(texto,color,P,ancho){
+  const cv=document.createElement('canvas'); cv.width=256; cv.height=64; const x=cv.getContext('2d');
+  x.font='bold 34px system-ui,Arial'; x.textAlign='center'; x.textBaseline='middle';
+  x.lineWidth=6; x.strokeStyle='rgba(0,0,0,0.85)'; x.strokeText(texto,128,32); x.fillStyle=color; x.fillText(texto,128,32);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),depthTest:false,transparent:true}));
+  const w=ancho||14; sp.scale.set(w,w/4,1); sp.position.copy(P); sp.renderOrder=12; grupo.add(sp);
+}
+function flecha(A,B,color){
+  const d=B.clone().sub(A); if(d.length()<0.01)return; d.normalize();
+  barraL(A.clone().addScaledVector(d,-ESTILO.extension),B.clone().addScaledVector(d,ESTILO.extension),ESTILO.grosor,color,0.95,true);
+  [[A,0x3ddc84],[B,0xff9f1c]].forEach(([P,c])=>{const e=new THREE.Mesh(new THREE.SphereGeometry(0.8,16,12),mc(c,1));e.position.copy(P);e.renderOrder=11;grupo.add(e);});
+}
+function ejesRef(P){ // ejes X (rojo, lateral), Y (verde, vertical) y Z (azul, frente-atrás) que pasan por el orificio de entrada
+  [[V(1,0,0),0xff4d4d,'X'],[V(0,1,0),0x4dff7a,'Y'],[V(0,0,1),0x4d8dff,'Z']].forEach(([u,c,n])=>{
+    barraL(P.clone().addScaledVector(u,-ESTILO.ejes),P.clone().addScaledVector(u,ESTILO.ejes),0.1,c,0.7,true);
+    etiqueta(n,'#'+c.toString(16).padStart(6,'0'),P.clone().addScaledVector(u,ESTILO.ejes+3),5);
+  });
+}
+function slerpV(a,b,t){
+  const th=Math.acos(Math.min(1,Math.max(-1,a.dot(b)))); if(th<1e-3)return a.clone();
+  const s=Math.sin(th); return a.clone().multiplyScalar(Math.sin((1-t)*th)/s).add(b.clone().multiplyScalar(Math.sin(t*th)/s));
+}
+function arco(P,a,b,color){ // arco punteado de a hacia b alrededor de P; devuelve su punto medio
+  const pts=[]; for(let i=0;i<=24;i++)pts.push(P.clone().addScaledVector(slerpV(a,b,i/24),ESTILO.arco));
+  const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineDashedMaterial({color,dashSize:0.8,gapSize:0.5,depthTest:solido(),transparent:true}));
+  l.computeLineDistances(); l.renderOrder=10; grupo.add(l); return pts[12];
+}
+function angulos(A,B,color){ // ángulo horizontal (respecto del plano sagital) y vertical (inclinación), con su valor
+  const d=B.clone().sub(A), L=d.length(); d.normalize();
+  const dh=V(d.x,0,d.z), el=Math.asin(d.y)*180/Math.PI;
+  if(dh.length()>0.02){
+    dh.normalize(); const r0=V(0,0,d.z<0?-1:1), ah=Math.acos(Math.min(1,Math.abs(dh.z)))*180/Math.PI;
+    barraL(A,A.clone().addScaledVector(r0,ESTILO.arco*1.15),0.06,0xffffff,0.45,false);
+    if(ah>0.5){const m=arco(A,r0,dh,color); etiqueta('H '+f(ah)+'° '+(d.x>0?'izq.':'der.'),color,m.clone().add(V(0,2.5,0)));}
+    barraL(A,A.clone().addScaledVector(dh,ESTILO.arco*1.15),0.06,0xffffff,0.45,false);
+    if(Math.abs(el)>0.5){const m=arco(A,dh,d,color); etiqueta('V '+f(Math.abs(el))+'° '+(el<0?'desc.':'asc.'),color,m.clone().add(V(0,2.5,0)));}
+  }
+  etiqueta(f(L)+' cm',color,A.clone().addScaledVector(d,L/2).add(V(0,3.5,0)));
+}
+function limpiar(){
+  while(grupo.children.length){
+    const o=grupo.children[0]; grupo.remove(o);
+    o.traverse(n=>{if(n.geometry)n.geometry.dispose(); if(n.material){if(n.material.map)n.material.map.dispose();n.material.dispose();}});
+  }
+}
+function describir(A,B,b){
+  const d=B.clone().sub(A), L=d.length(), el=Math.asin(d.y/L)*180/Math.PI, desv=Math.atan2(Math.abs(d.x),Math.abs(d.z))*180/Math.PI;
+  const ap=d.z<0?'de adelante hacia atrás':'de atrás hacia adelante';
+  const lat=Math.abs(d.x)<0.5?'sin desviación lateral':(d.x>0?'hacia la izquierda':'hacia la derecha')+' ('+f(desv)+'° respecto del plano sagital)';
+  const ver=Math.abs(el)<1?'horizontal':(el<0?'descendente ':'ascendente ')+f(Math.abs(el))+'°';
+  return 'Entrada: '+region(A.y,b)+' · Salida: '+region(B.y,b)+'<br>Longitud entre orificios: '+f(L)+' cm<br>Dirección: '+ap+', '+lat+', '+ver+
+    (A.aviso||B.aviso?'<br>⚠ Una distancia a la línea media supera el borde del cuerpo; revisa el dato, el lado o las medidas del cuerpo.':'');
+}
+function dibujar(){
+  limpiar();
+  CASOS.forEach((c,i)=>{
+    const b=params(c), A=posOrificio(c.entrada,b), B=posOrificio(c.salida,b);
+    if(i===activo){
+      const col=c.color||'#ffffff'; flecha(A,B,col);
+      if(document.getElementById('vEjes').checked)ejesRef(A);
+      if(document.getElementById('vAng').checked)angulos(A,B,col);
+      grupo.add(marcador(c.entrada,A,0x3ddc84));grupo.add(marcador(c.salida,B,0xff9f1c));
+    }
+    const r=document.getElementById('res'+i); if(r)r.innerHTML=describir(A,B,b);
+  });
+}
+function marcarActivo(){document.querySelectorAll('.tarjeta').forEach((t,j)=>t.classList.toggle('activa',j===activo));}
+function activar(i){if(i===activo||!CASOS[i])return;activo=i;construirCuerpo();dibujar();marcarActivo();}
+function enfocar(i){
+  activar(i); const c=CASOS[i], b=params(c), A=posOrificio(c.entrada,b), B=posOrificio(c.salida,b);
+  objetivo.copy(A).add(B).multiplyScalar(0.5); R=(objetivo.y>b.hombro?45:(objetivo.y>b.cadera?110:80))*Math.max(b.sv,0.8); camara();
+}
+
+/* panel */
+const FORMAS=[['redonda','Redonda'],['estrella','Estrella'],['ovalada','Ovalada']];
+const REFS=[['vertex','Vértex'],['rotula','Borde rotuliano']];
+const LADOS=[['I','Izquierda'],['D','Derecha']];
+const CARAS=[['anterior','Anterior'],['posterior','Posterior']];
+const COMPLEX=[['delgada','Delgada'],['media','Media'],['robusta','Robusta']];
+const SEXOS=[['','No indicado'],['F','Femenino'],['M','Masculino']];
+const sel=(c,o,k,et,ops)=>'<label>'+et+'<select data-c="'+c+'" data-o="'+o+'" data-k="'+k+'">'+ops.map(([v,t])=>'<option value="'+v+'"'+(CASOS[c][o][k]===v?' selected':'')+'>'+t+'</option>').join('')+'</select></label>';
+const num=(c,o,k,et)=>'<label>'+et+'<input type="number" step="0.5" min="0" value="'+CASOS[c][o][k]+'" data-c="'+c+'" data-o="'+o+'" data-k="'+k+'"></label>';
+const orif=(c,o,t)=>'<div class="orif"><strong>'+t+'</strong><div class="campos">'+sel(c,o,'forma','Forma',FORMAS)+num(c,o,'diam','Diámetro (cm)')+sel(c,o,'ref','Medido desde',REFS)+num(c,o,'dist','Distancia (cm)')+num(c,o,'lat','De la línea media (cm)')+sel(c,o,'lado','Lado',LADOS)+sel(c,o,'cara','Cara',CARAS)+'</div></div>';
+const bloqueCuerpo=c=>'<div class="orif"><strong>Cuerpo</strong><div class="campos">'+num(c,'cuerpo','altura','Altura (cm)')+num(c,'cuerpo','peso','Peso (kg)')+sel(c,'cuerpo','complexion','Complexión',COMPLEX)+sel(c,'cuerpo','sexo','Sexo',SEXOS)+'</div></div>';
+function panel(){
+  const L=document.getElementById('lista'); L.innerHTML='';
+  CASOS.forEach((c,i)=>{
+    const t=document.createElement('div'); t.className='tarjeta'; t.style.borderLeftColor=c.color;
+    t.innerHTML='<div class="fila"><input class="nom" value="'+esc(c.nombre)+'" data-c="'+i+'" data-k="nombre" aria-label="Nombre del caso"><input type="color" value="'+c.color+'" data-c="'+i+'" data-k="color" aria-label="Color"><button data-del="'+i+'">Quitar</button></div>'+
+      '<div class="botones"><button data-foco="'+i+'">Enfocar</button><button data-inv="'+i+'">Invertir entrada y salida</button></div>'+
+      bloqueCuerpo(i)+orif(i,'entrada','Orificio de entrada (verde)')+orif(i,'salida','Orificio de salida (naranja)')+'<div class="res" id="res'+i+'"></div>';
+    L.appendChild(t);
+  });
+  activo=Math.max(0,Math.min(activo,CASOS.length-1)); construirCuerpo(); dibujar(); marcarActivo();
+}
+const lista=document.getElementById('lista');
+const idxDe=el=>{const t=el.closest('.tarjeta');return t?Array.prototype.indexOf.call(lista.children,t):-1;};
+lista.addEventListener('focusin',e=>{const j=idxDe(e.target);if(j>=0)activar(j);});
+lista.addEventListener('input',e=>{
+  const d=e.target.dataset; if(d.c===undefined)return; const k=d.k, v=e.target.value;
+  if(d.o)CASOS[d.c][d.o][k]=['diam','dist','lat','altura','peso'].includes(k)?(parseFloat(v)||0):v;
+  else{CASOS[d.c][k]=v; if(k==='color')e.target.closest('.tarjeta').style.borderLeftColor=v;}
+  if(d.o==='cuerpo'&&+d.c===activo)construirCuerpo();
+  dibujar();
+});
+lista.addEventListener('click',e=>{
+  const d=e.target.dataset;
+  if(d.del!==undefined){CASOS.splice(+d.del,1);panel();}
+  else if(d.foco!==undefined)enfocar(+d.foco);
+  else if(d.inv!==undefined){const c=CASOS[+d.inv];[c.entrada,c.salida]=[c.salida,c.entrada];panel();}
+});
+document.getElementById('agregar').onclick=()=>{
+  CASOS.push({nombre:'Caso '+(CASOS.length+1),color:PALETA[CASOS.length%PALETA.length],
+    cuerpo:{sexo:'F',altura:160,peso:55,complexion:'delgada'},
+    entrada:{forma:'redonda',diam:1,ref:'vertex',dist:55,lat:0,lado:'I',cara:'anterior'},
+    salida:{forma:'redonda',diam:1,ref:'vertex',dist:55,lat:0,lado:'I',cara:'posterior'}});
+  panel();
+};
+document.getElementById('completo').onclick=()=>{const b=params(CASOS[activo]||CASOS[0]);objetivo.set(0,-85*b.sv,0);R=250*b.sv;camara();};
+document.getElementById('vEjes').onchange=()=>dibujar();
+document.getElementById('vAng').onchange=()=>dibujar();
+document.getElementById('vCabello').onchange=e=>{bodyRaiz.traverse(o=>{if(o.userData&&o.userData.decor)o.visible=e.target.checked;});};
+document.getElementById('copiar').onclick=async()=>{
+  const txt='const CASOS = '+JSON.stringify(CASOS,null,1)+';';
+  try{await navigator.clipboard.writeText(txt);alert('Datos copiados. Pégalos en index.html reemplazando el bloque CASOS.');}
+  catch(_){prompt('Copia este texto:',txt);}
+};
+const estadoC=document.getElementById('estadoCuerpo');
+function cargarCuerpo(){
+  const nombre=CUERPO_MODELO.archivo, ext=nombre.split('.').pop().toLowerCase();
+  const fallo=()=>{estadoC.textContent='No se encontró '+nombre+': se muestra el maniquí esquemático.';};
+  const fin=obj=>{
+    const raices=obj.children.filter(c=>{let m=false;c.traverse(o=>{if(o.isMesh)m=true;});return m;});
+    let aviso='';
+    if(raices.length>1){raices.slice(0,-1).forEach(r=>obj.remove(r));aviso=' El archivo traía varios cuerpos; se usa solo el último.';}
+    let piel=null;                                   // la piel es la malla con más vértices; el resto son adornos
+    obj.traverse(o=>{if(o.isMesh&&(!piel||o.geometry.attributes.position.count>piel.geometry.attributes.position.count))piel=o;});
+    if(!piel){fallo();return;}
+    let hayDecor=false; matsPiel=[];
+    obj.traverse(o=>{
+      if(!o.isMesh)return;
+      const ms=Array.isArray(o.material)?o.material:[o.material];
+      if(o===piel){ms.forEach(m=>{m.side=THREE.FrontSide;if(!m.map&&m.color)m.color.set(0xc9a58f);matsPiel.push(m);});o.renderOrder=3;}
+      else{hayDecor=true;o.userData.decor=true;o.renderOrder=4;ms.forEach(m=>{m.side=THREE.DoubleSide;});}
+    });
+    pielMesh=piel; obj.updateMatrixWorld(true);
+    {const pa=piel.geometry.attributes.position, t=new THREE.Vector3(); ptsPiel=new Float32Array(pa.count*3);
+     for(let i=0;i<pa.count;i++){t.fromBufferAttribute(pa,i).applyMatrix4(piel.matrixWorld);ptsPiel[3*i]=t.x;ptsPiel[3*i+1]=t.y;ptsPiel[3*i+2]=t.z;}}
+    aplicarOpacidad(+document.getElementById('opCuerpo').value);
+    document.getElementById('lCabello').hidden=!hayDecor;
+    bodyRot.add(obj); cuerpoReal=true;
+    document.getElementById('ajusteCuerpo').hidden=false;
+    document.querySelectorAll('[data-b]').forEach(i=>{const k=i.dataset.b;i.value=k[0]==='r'?CUERPO_MODELO.rot['xyz'.indexOf(k[1])]:CUERPO_MODELO.pos['xyz'.indexOf(k[1])];});
+    estadoC.textContent='Cuerpo cargado: '+nombre+'. Se escala a la altura de cada caso; si sale girado, usa los controles de giro.'+aviso;
+    construirCuerpo(); dibujar();
+  };
+  try{
+    if(ext==='stl'&&THREE.STLLoader)new THREE.STLLoader().load(nombre,g=>{g.computeVertexNormals();fin(new THREE.Mesh(g,new THREE.MeshPhongMaterial()));},undefined,fallo);
+    else if(ext==='obj'&&THREE.OBJLoader)new THREE.OBJLoader().load(nombre,fin,undefined,fallo);
+    else if(THREE.GLTFLoader)new THREE.GLTFLoader().load(nombre,g=>fin(g.scene),undefined,fallo);
+    else fallo();
+  }catch(_){fallo();}
+}
+document.getElementById('ajusteCuerpo').addEventListener('input',e=>{
+  const k=e.target.dataset.b; if(!k)return; const v=parseFloat(e.target.value)||0;
+  if(k[0]==='r')CUERPO_MODELO.rot['xyz'.indexOf(k[1])]=v; else CUERPO_MODELO.pos['xyz'.indexOf(k[1])]=v;
+  ajustarCuerpoReal(); dibujar();
+});
+document.getElementById('opCuerpo').oninput=e=>aplicarOpacidad(+e.target.value);
+document.getElementById('copiarAjusteCuerpo').onclick=async()=>{
+  const txt='const CUERPO_MODELO = '+JSON.stringify(CUERPO_MODELO)+';';
+  try{await navigator.clipboard.writeText(txt);alert('Ajuste copiado. Pégalo en index.html reemplazando la línea const CUERPO_MODELO.');}
+  catch(_){prompt('Copia este texto:',txt);}
+};
+panel();
+aplicarOpacidad(+document.getElementById('opCuerpo').value);
+cargarCuerpo();
+</script>
+</body>
+</html>
